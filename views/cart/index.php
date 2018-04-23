@@ -54,7 +54,7 @@
                             </li>
                         </ul>
                         <div class="buttons-holder">
-                            <input type='submit' class="le-button big" value="去结算">
+                            <input type='submit' class="le-button big small" value="去结算">
                             <a class="simple-link block" href="<?php echo yii\helpers\Url::to(['index/index']) ?>" >继续购物</a>
                         </div>
                     </div>
