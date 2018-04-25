@@ -97,4 +97,93 @@ class OrderController extends CommonController
         }
         return $this->redirect(['order/check', 'orderid' => $orderid]);//如果完成，回到确认页
     }
+
+    public function actionConfirm()//确认订单
+    {
+        //addressid, expressid, status, amount(orderid,userid)
+        try {//处理错误
+            if (Yii::$app->session['isLogin'] != 1) {//判断是否登录
+                return $this->redirect(['member/auth']);
+            }
+            if (!Yii::$app->request->isPost) {//不是post请求
+                throw new \Exception();
+            }
+            $post = Yii::$app->request->post();//接收post数据
+
+            //确定该订单是否属于该用户
+            $loginname = Yii::$app->session['loginname'];
+            $usermodel = User::find()->where('username = :name or useremail = :email', [':name' => $loginname, ':email' => $loginname])->one();
+            if (empty($usermodel)) {
+                throw new \Exception();
+            }
+            $userid = $usermodel->userid;//userid
+            $model = Order::find()->where('orderid = :oid and userid = :uid', [':oid' => $post['orderid'], ':uid' => $userid])->one();//订单
+            if (empty($model)) {
+                throw new \Exception();
+            }
+            $model->scenario = "update";//场景，更新
+            $post['status'] = Order::CHECKORDER;//待支付状态
+            //订单详情
+            $details = OrderDetail::find()->where('orderid = :oid', [':oid' => $post['orderid']])->all();
+            $amount = 0;//商品总价格
+            foreach($details as $detail) {
+                $amount += $detail->productnum*$detail->price;
+            }
+            if ($amount <= 0) {
+                throw new \Exception();
+            }
+            $express = Yii::$app->params['expressPrice'][$post['expressid']];//邮费
+            if ($express < 0) {
+                throw new \Exception();
+            }
+            $amount += $express;//商品总价+邮费
+            $post['amount'] = $amount;
+            $data['Order'] = $post;
+            if (empty($post['addressid'])) {//如果地址为空
+                return $this->redirect(['order/pay', 'orderid' => $post['orderid'], 'paymethod' => $post['paymethod']]);
+            }
+            if ($model->load($data) && $model->save()) {//如果更新成功/支付
+                return $this->redirect(['order/pay', 'orderid' => $post['orderid'], 'paymethod' => $post['paymethod']]);
+            }
+        }catch(\Exception $e) {
+            return $this->redirect(['index/index']);
+        }
+    }
+
+    public function actionPay()
+    {
+        try{
+            if (Yii::$app->session['isLogin'] != 1) {
+                throw new \Exception();
+            }
+            $orderid = Yii::$app->request->get('orderid');
+            $paymethod = Yii::$app->request->get('paymethod');
+            if (empty($orderid) || empty($paymethod)) {
+                throw new \Exception();
+            }
+            if ($paymethod == 'alipay') {
+                return Pay::alipay($orderid);
+            }
+        }catch(\Exception $e) {}
+        return $this->redirect(['order/index']);
+    }
+
+    public function actionGetexpress()
+    {
+        $expressno = Yii::$app->request->get('expressno');
+        $res = Express::search($expressno);
+        echo $res;
+        exit;
+    }
+
+    public function actionReceived()
+    {
+        $orderid = Yii::$app->request->get('orderid');
+        $order = Order::find()->where('orderid = :oid', [':oid' => $orderid])->one();
+        if (!empty($order) && $order->status == Order::SENDED) {
+            $order->status = Order::RECEIVED;
+            $order->save();
+        }
+        return $this->redirect(['order/index']);
+    }
 }
